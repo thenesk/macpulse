@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """MacPulse - macOS server monitoring with iMessage alerts."""
 
+import argparse
 import json
 import logging
 import os
@@ -9,7 +10,6 @@ import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -39,6 +39,7 @@ DEFAULT_SETTINGS = {
         "temperature_c": 90,
     },
     "cooldown_minutes": 30,
+    "software_update_timeout": 120,
     "checks": {
         "cpu": True,
         "memory": True,
@@ -168,12 +169,12 @@ def get_battery_info():
     return None
 
 
-def get_software_updates():
+def get_software_updates(timeout=120):
     """Check for available macOS software updates."""
     try:
         out = subprocess.run(
             ["softwareupdate", "-l"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=timeout,
         )
         if "No new software available" in out.stdout:
             return {"available": False, "details": None}
@@ -252,8 +253,9 @@ def send_imessage(recipient, message):
 # ── Main ─────────────────────────────────────────────────────────────
 
 
-def collect_metrics(checks):
+def collect_metrics(checks, settings=None):
     """Collect all enabled metrics."""
+    settings = settings or {}
     metrics = {}
     if checks.get("cpu"):
         metrics["cpu"] = get_cpu_usage()
@@ -266,7 +268,8 @@ def collect_metrics(checks):
     if checks.get("battery"):
         metrics["battery"] = get_battery_info()
     if checks.get("software_update"):
-        metrics["software_update"] = get_software_updates()
+        timeout = settings.get("software_update_timeout", 120)
+        metrics["software_update"] = get_software_updates(timeout=timeout)
     metrics["load"] = get_uptime_and_load()
     return metrics
 
@@ -313,7 +316,7 @@ def run_monitor():
     recipient = settings.get("recipient", "")
     cooldown = settings.get("cooldown_minutes", 30)
 
-    metrics = collect_metrics(checks)
+    metrics = collect_metrics(checks, settings)
     print_metrics(metrics)
     logger.info("Metrics: %s", json.dumps({k: v for k, v in metrics.items()}, default=str))
 
@@ -372,11 +375,16 @@ def print_install():
 
 
 def main():
+    parser = argparse.ArgumentParser(description="MacPulse - macOS server monitoring with iMessage alerts")
+    parser.add_argument("--test", action="store_true", help="send a test iMessage to verify delivery")
+    parser.add_argument("--install", action="store_true", help="print a crontab entry for scheduling")
+    args = parser.parse_args()
+
     setup_logging()
 
-    if "--test" in sys.argv:
+    if args.test:
         test_alert()
-    elif "--install" in sys.argv:
+    elif args.install:
         print_install()
     else:
         run_monitor()
