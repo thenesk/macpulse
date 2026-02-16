@@ -63,14 +63,20 @@ def load_settings():
 
 def load_state():
     if STATE_PATH.exists():
-        with open(STATE_PATH) as f:
-            return json.load(f)
+        try:
+            with open(STATE_PATH) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Could not read state file, resetting: %s", e)
     return {}
 
 
 def save_state(state):
-    with open(STATE_PATH, "w") as f:
-        json.dump(state, f)
+    try:
+        with open(STATE_PATH, "w") as f:
+            json.dump(state, f)
+    except OSError as e:
+        logger.error("Could not write state file: %s", e)
 
 
 # ── Metric collectors ────────────────────────────────────────────────
@@ -142,7 +148,7 @@ def get_cpu_temperature():
             )
             if out.returncode == 0:
                 m = re.search(r"(\d+\.?\d*)\s*°?C", out.stdout)
-                if m:
+                if m and float(m.group(1)) > 0:
                     return float(m.group(1))
         except FileNotFoundError:
             continue

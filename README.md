@@ -1,6 +1,6 @@
 # MacPulse
 
-Lightweight macOS server monitoring script that sends iMessage alerts when system health thresholds are exceeded. Zero external dependencies — uses only Python stdlib and macOS built-in tools.
+Lightweight macOS server monitoring script that sends iMessage alerts when system health thresholds are exceeded. Zero external dependencies — uses only Python stdlib and macOS built-in tools.  Written with help from Claude.
 
 ## Quick Start
 
