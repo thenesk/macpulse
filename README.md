@@ -28,9 +28,10 @@ python3 macpulse.py --install
 | Disk usage | `shutil.disk_usage("/")` | 80% |
 | CPU temperature | `osx-cpu-temp` or `sudo powermetrics` | 90°C |
 | Battery charge | `pmset -g batt` | 20% |
+| macOS updates | `softwareupdate -l` | alerts if any available |
 | Load averages | `os.getloadavg()` | (display only) |
 
-Temperature is skipped gracefully if neither `osx-cpu-temp` nor passwordless `sudo powermetrics` is available.
+Temperature is skipped gracefully if neither `osx-cpu-temp` nor passwordless `sudo powermetrics` is available. The software update check contacts Apple's servers and may take 10-30 seconds.
 
 ## Configuration
 
@@ -52,7 +53,8 @@ Edit `settings.json` (created automatically on first run):
         "memory": true,
         "disk": true,
         "temperature": true,
-        "battery": true
+        "battery": true,
+        "software_update": true
     }
 }
 ```

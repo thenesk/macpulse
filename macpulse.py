@@ -45,6 +45,7 @@ DEFAULT_SETTINGS = {
         "disk": True,
         "temperature": True,
         "battery": True,
+        "software_update": True,
     },
 }
 
@@ -167,6 +168,23 @@ def get_battery_info():
     return None
 
 
+def get_software_updates():
+    """Check for available macOS software updates."""
+    try:
+        out = subprocess.run(
+            ["softwareupdate", "-l"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if "No new software available" in out.stdout:
+            return {"available": False, "details": None}
+        # Extract update labels
+        updates = re.findall(r"\* Label:\s*(.+)", out.stdout)
+        return {"available": True, "details": updates or ["updates available"]}
+    except subprocess.TimeoutExpired:
+        logger.warning("softwareupdate timed out")
+        return None
+
+
 def get_uptime_and_load():
     """Get load averages."""
     load1, load5, load15 = os.getloadavg()
@@ -199,6 +217,12 @@ def check_thresholds(metrics, thresholds, checks):
         batt = metrics["battery"]
         if batt["state"] != "charging" and batt["percent"] <= thresholds["battery_below"]:
             alerts.append(("battery", f"Battery at {batt['percent']}% (threshold: {thresholds['battery_below']}%)"))
+
+    if checks.get("software_update") and metrics.get("software_update") is not None:
+        su = metrics["software_update"]
+        if su["available"]:
+            details = ", ".join(su["details"])
+            alerts.append(("software_update", f"macOS updates available: {details}"))
 
     return alerts
 
@@ -241,6 +265,8 @@ def collect_metrics(checks):
         metrics["temperature"] = get_cpu_temperature()
     if checks.get("battery"):
         metrics["battery"] = get_battery_info()
+    if checks.get("software_update"):
+        metrics["software_update"] = get_software_updates()
     metrics["load"] = get_uptime_and_load()
     return metrics
 
@@ -266,6 +292,14 @@ def print_metrics(metrics):
             print(f"  Battery:       {batt['percent']}% ({batt['state']})")
         else:
             print("  Battery:       unavailable")
+    if "software_update" in metrics:
+        su = metrics["software_update"]
+        if su is None:
+            print("  macOS Updates: unavailable")
+        elif su["available"]:
+            print(f"  macOS Updates: {', '.join(su['details'])}")
+        else:
+            print("  macOS Updates: up to date")
     load = metrics.get("load")
     if load:
         print(f"  Load Avg:      {load['load_1m']} / {load['load_5m']} / {load['load_15m']}")
