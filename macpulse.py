@@ -20,16 +20,9 @@ LOG_PATH = Path.home() / "Library" / "Logs" / "macpulse.log"
 
 logger = logging.getLogger("macpulse")
 
-# Absolute paths for system binaries (cron uses a minimal PATH)
-TOP = "/usr/bin/top"
-VM_STAT = "/usr/bin/vm_stat"
-SYSCTL = "/usr/sbin/sysctl"
-PMSET = "/usr/bin/pmset"
-HOSTNAME = "/bin/hostname"
-SOFTWAREUPDATE = "/usr/sbin/softwareupdate"
-POWERMETRICS = "/usr/bin/powermetrics"
-OSASCRIPT = "/usr/bin/osascript"
-SUDO = "/usr/bin/sudo"
+# Commands used by this script — resolved at install time for cron PATH
+REQUIRED_COMMANDS = ["top", "vm_stat", "sysctl", "pmset", "hostname",
+                     "softwareupdate", "powermetrics", "osascript", "sudo"]
 
 
 def setup_logging():
@@ -95,10 +88,13 @@ def save_state(state):
 
 def get_cpu_usage():
     """Get CPU usage percentage from top."""
-    out = subprocess.run(
-        [TOP, "-l", "1", "-n", "0", "-stats", "cpu"],
-        capture_output=True, text=True, timeout=10,
-    )
+    try:
+        out = subprocess.run(
+            ["top", "-l", "1", "-n", "0", "-stats", "cpu"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        return None
     for line in out.stdout.splitlines():
         if "CPU usage" in line:
             m = re.search(r"(\d+\.?\d*)% user.*?(\d+\.?\d*)% sys", line)
@@ -112,7 +108,7 @@ def get_memory_usage():
     # Total physical memory
     try:
         out = subprocess.run(
-            [SYSCTL, "-n", "hw.memsize"],
+            ["sysctl", "-n", "hw.memsize"],
             capture_output=True, text=True, timeout=5,
         )
         total_bytes = int(out.stdout.strip())
@@ -121,7 +117,7 @@ def get_memory_usage():
 
     # vm_stat for page statistics
     try:
-        out = subprocess.run([VM_STAT], capture_output=True, text=True, timeout=5)
+        out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5)
     except subprocess.TimeoutExpired:
         return None
     page_size = 16384  # default
@@ -167,7 +163,7 @@ def get_cpu_temperature():
     # Try powermetrics (needs sudo / root)
     try:
         out = subprocess.run(
-            [SUDO, "-n", POWERMETRICS, "--samplers", "smc", "-i", "1", "-n", "1"],
+            ["sudo", "-n", "powermetrics", "--samplers", "smc", "-i", "1", "-n", "1"],
             capture_output=True, text=True, timeout=10,
         )
         if out.returncode == 0:
@@ -183,7 +179,7 @@ def get_cpu_temperature():
 def get_battery_info():
     """Get battery charge percentage and charging state from pmset."""
     out = subprocess.run(
-        [PMSET, "-g", "batt"], capture_output=True, text=True, timeout=5,
+        ["pmset", "-g", "batt"], capture_output=True, text=True, timeout=5,
     )
     text = out.stdout
     m = re.search(r"(\d+)%;\s*(\w[\w\s]*?);", text)
@@ -196,7 +192,7 @@ def get_software_updates(timeout=120):
     """Check for available macOS software updates."""
     try:
         out = subprocess.run(
-            [SOFTWAREUPDATE, "-l"],
+            ["softwareupdate", "-l"],
             capture_output=True, text=True, timeout=timeout,
         )
         combined = out.stdout + out.stderr
@@ -275,7 +271,7 @@ def send_imessage(recipient, message):
     escaped = message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", '" & return & "')
     escaped_rcpt = recipient.replace("\\", "\\\\").replace('"', '\\"')
     script = f'tell application "Messages" to send ("{escaped}") to buddy "{escaped_rcpt}"'
-    result = subprocess.run([OSASCRIPT, "-e", script], capture_output=True, text=True, timeout=30)
+    result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
         logger.error("Failed to send iMessage: %s", result.stderr.strip())
         return False
@@ -364,7 +360,7 @@ def run_monitor():
         return
 
     hostname = subprocess.run(
-        [HOSTNAME, "-s"], capture_output=True, text=True
+        ["hostname", "-s"], capture_output=True, text=True
     ).stdout.strip() or "mac-server"
     body = f"[MacPulse] {hostname}\n" + "\n".join(f"- {msg}" for _, msg in to_send)
 
@@ -400,9 +396,20 @@ def test_alert():
 def print_install():
     script = Path(__file__).resolve()
     python = sys.executable
-    entry = f"*/5 * * * * {python} {script} >> /dev/null 2>&1"
+
+    # Resolve directories needed for PATH from current environment
+    dirs = set()
+    for cmd in REQUIRED_COMMANDS:
+        result = subprocess.run(
+            ["which", cmd], capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            dirs.add(str(Path(result.stdout.strip()).parent))
+    path = ":".join(sorted(dirs))
+
     print("Add this to your crontab (crontab -e):\n")
-    print(f"  {entry}")
+    print(f"  PATH={path}")
+    print(f"  */5 * * * * {python} {script} >> /dev/null 2>&1")
     print("\nOr create a launchd plist for more reliable scheduling.")
 
 
