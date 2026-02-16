@@ -103,7 +103,10 @@ def get_memory_usage():
         return None
 
     # vm_stat for page statistics
-    out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5)
+    try:
+        out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        return None
     page_size = 16384  # default
     m = re.search(r"page size of (\d+) bytes", out.stdout)
     if m:
