@@ -17,6 +17,9 @@ python3 macpulse.py --test
 
 # Print a crontab entry for scheduled monitoring
 python3 macpulse.py --install
+
+# Show all available options
+python3 macpulse.py --help
 ```
 
 ## What It Monitors
@@ -48,6 +51,7 @@ Edit `settings.json` (created automatically on first run):
         "temperature_c": 90
     },
     "cooldown_minutes": 30,
+    "software_update_timeout": 120,
     "checks": {
         "cpu": true,
         "memory": true,
@@ -64,6 +68,7 @@ Edit `settings.json` (created automatically on first run):
 | `recipient` | Phone number or Apple ID for iMessage alerts |
 | `thresholds` | Per-metric alert thresholds |
 | `cooldown_minutes` | Minimum time between repeated alerts for the same metric |
+| `software_update_timeout` | Timeout in seconds for the `softwareupdate` check (default: 120) |
 | `checks` | Toggle individual checks on/off |
 
 ## Scheduling

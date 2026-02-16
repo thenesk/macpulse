@@ -93,11 +93,14 @@ def get_cpu_usage():
 def get_memory_usage():
     """Get memory usage percentage from vm_stat and sysctl."""
     # Total physical memory
-    out = subprocess.run(
-        ["sysctl", "-n", "hw.memsize"],
-        capture_output=True, text=True, timeout=5,
-    )
-    total_bytes = int(out.stdout.strip())
+    try:
+        out = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"],
+            capture_output=True, text=True, timeout=5,
+        )
+        total_bytes = int(out.stdout.strip())
+    except (ValueError, subprocess.TimeoutExpired):
+        return None
 
     # vm_stat for page statistics
     out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5)
@@ -129,7 +132,7 @@ def get_disk_usage():
 def get_cpu_temperature():
     """Get CPU temperature via powermetrics or osx-cpu-temp."""
     # Try osx-cpu-temp first (no sudo needed)
-    for cmd in ["osx-cpu-temp", "/usr/local/bin/osx-cpu-temp"]:
+    for cmd in ["osx-cpu-temp", "/opt/homebrew/bin/osx-cpu-temp", "/usr/local/bin/osx-cpu-temp"]:
         try:
             out = subprocess.run(
                 [cmd], capture_output=True, text=True, timeout=5,
@@ -216,7 +219,7 @@ def check_thresholds(metrics, thresholds, checks):
 
     if checks.get("battery") and metrics.get("battery") is not None:
         batt = metrics["battery"]
-        if batt["state"] != "charging" and batt["percent"] <= thresholds["battery_below"]:
+        if batt["state"] not in ("charging", "charged") and batt["percent"] <= thresholds["battery_below"]:
             alerts.append(("battery", f"Battery at {batt['percent']}% (threshold: {thresholds['battery_below']}%)"))
 
     if checks.get("software_update") and metrics.get("software_update") is not None:
@@ -241,8 +244,9 @@ def filter_by_cooldown(alerts, state, cooldown_minutes):
 
 def send_imessage(recipient, message):
     """Send an iMessage via osascript."""
-    escaped = message.replace("\\", "\\\\").replace('"', '\\"')
-    script = f'tell application "Messages" to send "{escaped}" to buddy "{recipient}"'
+    escaped = message.replace("\\", "\\\\").replace('"', '\\"').replace("\n", '" & return & "')
+    escaped_rcpt = recipient.replace("\\", "\\\\").replace('"', '\\"')
+    script = f'tell application "Messages" to send ("{escaped}") to buddy "{escaped_rcpt}"'
     result = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=30)
     if result.returncode != 0:
         logger.error("Failed to send iMessage: %s", result.stderr.strip())
@@ -318,7 +322,7 @@ def run_monitor():
 
     metrics = collect_metrics(checks, settings)
     print_metrics(metrics)
-    logger.info("Metrics: %s", json.dumps({k: v for k, v in metrics.items()}, default=str))
+    logger.info("Metrics: %s", json.dumps(metrics, default=str))
 
     alerts = check_thresholds(metrics, thresholds, checks)
     if not alerts:
