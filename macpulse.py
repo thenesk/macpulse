@@ -199,11 +199,19 @@ def get_software_updates(timeout=120):
             [SOFTWAREUPDATE, "-l"],
             capture_output=True, text=True, timeout=timeout,
         )
-        if "No new software available" in out.stdout:
+        combined = out.stdout + out.stderr
+        if "No new software available" in combined:
             return {"available": False, "details": None}
-        # Extract update labels
-        updates = re.findall(r"\* Label:\s*(.+)", out.stdout)
-        return {"available": True, "details": updates or ["updates available"]}
+        # Extract update labels (try both stdout and stderr)
+        updates = re.findall(r"\* Label:\s*(.+)", combined)
+        # Also try "* " prefixed lines as a fallback for older formats
+        if not updates:
+            updates = re.findall(r"^\s*\*\s+(.+)", combined, re.MULTILINE)
+        if updates:
+            return {"available": True, "details": updates}
+        # No recognizable updates and no "no updates" message — treat as unknown
+        logger.warning("Could not parse softwareupdate output")
+        return None
     except subprocess.TimeoutExpired:
         logger.warning("softwareupdate timed out")
         return None
